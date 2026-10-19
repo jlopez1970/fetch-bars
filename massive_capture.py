@@ -4,6 +4,10 @@ massive_capture.py
 Version: see __version__ below (also: python3 massive_capture.py --version)
 
 Changelog
+  01.08  --from auto: each ticker starts from the day of the last bar already
+         in --out (implies --merge). Tickers with no files yet start
+         AUTO_NEW_DAYS (730) days back. --to still defaults to today, so a
+         top-up is just: --tickers-file X.txt --from auto --out <folder>
   01.07  RSI + MACD are added automatically after every capture/merge (same
          math as add_indicators.py: RSI 14, MACD 12/26/9, regular session for
          intraday, all bars for daily; filtered files copy from the full file).
@@ -60,6 +64,7 @@ Usage:
     python3 massive_capture.py --tickers-from Used/2026/2min --agg 10 30 60 1440
     python3 massive_capture.py --from 2025-01-01 --to 2025-12-31 --out Used/2026_full --merge
     python3 massive_capture.py --tickers-from Used/2026_full/2min --out Used/2026_full --merge-only
+    python3 massive_capture.py --tickers-file macro56.txt --from auto --out Used/2026_macro
     python3 massive_capture.py --calls-per-min 0      # paid plan: no throttling
     python3 massive_capture.py --no-filter --agg      # raw bars only
 """
@@ -77,7 +82,7 @@ import urllib.request
 from collections import deque
 from datetime import date, datetime, timedelta, timezone
 
-__version__ = "01.07"
+__version__ = "01.08"
 
 # ── config ────────────────────────────────────────────────────────────────────
 DEFAULT_TICKERS = [
@@ -93,6 +98,7 @@ DEFAULT_AGG    = [30, 1440]            # 30-min + daily, like Used/2026
 DEFAULT_OUT    = "Captures"
 LIMIT          = 50_000                # max bars per call
 CALLS_PER_MIN  = 5                     # free-tier limit
+AUTO_NEW_DAYS  = 730                   # --from auto, ticker with no files yet
 BASE_URL       = "https://api.polygon.io"   # api.massive.com also works after the rebrand
 MAX_RETRIES    = 5
 
@@ -511,10 +517,28 @@ def merge_source(ticker, args, limiter, api_key, src_dir, entry):
     return path, payload
 
 
+def auto_from(ticker, args, src_dir):
+    """--from auto: day (ET) of the last bar already on disk for this ticker."""
+    last = None
+    for _, m in list_sources(src_dir, ticker, args.tf):
+        t = m["bars"][-1]["t"]
+        last = t if last is None or t > last else last
+    if last is None:
+        d = (date.today() - timedelta(days=AUTO_NEW_DAYS)).isoformat()
+        print(f"  · no files yet → from {d}")
+    else:
+        d = day_key(last)
+        print(f"  · last bar on disk {d} → from {d}")
+    return argparse.Namespace(**{**vars(args), "date_from": d})
+
+
 def capture_ticker(ticker, args, limiter, api_key):
     tf = args.tf
     src_dir = os.path.join(args.out, f"{tf}min")
     entry = {"ticker": ticker, "status": "ok", "files": [], "apiCalls": 0}
+    if args.date_from == "auto" and not args.merge_only:
+        args = auto_from(ticker, args, src_dir)
+        entry["from"] = args.date_from
 
     if args.merge or args.merge_only:
         result = merge_source(ticker, args, limiter, api_key, src_dir, entry)
@@ -660,7 +684,7 @@ def main():
     p.add_argument("--tickers", nargs="+", help="Ticker list")
     p.add_argument("--tickers-file", help="Text file with tickers")
     p.add_argument("--tickers-from", help="Folder of existing bar files to take tickers from")
-    p.add_argument("--from", dest="date_from", default=DEFAULT_FROM, help="Start date YYYY-MM-DD")
+    p.add_argument("--from", dest="date_from", default=DEFAULT_FROM, help="Start date YYYY-MM-DD, or 'auto' = last bar on disk per ticker (implies --merge)")
     p.add_argument("--to", dest="date_to", default=DEFAULT_TO, help="End date YYYY-MM-DD")
     p.add_argument("--tf", type=int, default=DEFAULT_TF, help="Source timeframe in minutes (default 2)")
     p.add_argument("--agg", type=int, nargs="*", default=DEFAULT_AGG,
@@ -690,6 +714,11 @@ def main():
     bad = [t for t in args.agg if t < args.tf or (t < 1440 and t % args.tf)]
     if bad:
         sys.exit(f"Error: --agg values must be multiples of --tf ({args.tf}) or 1440; bad: {bad}")
+
+    if args.date_from == "auto":
+        args.merge = True                   # auto only makes sense when topping up existing files
+    elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.date_from):
+        sys.exit("Error: --from must be YYYY-MM-DD or 'auto'")
 
     global SSL_CTX
     SSL_CTX = build_ssl_context(args.insecure)

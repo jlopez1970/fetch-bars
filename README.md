@@ -1,6 +1,6 @@
 # Massive Capture Tool — Guía de uso
 
-**Script:** `massive_capture.py` (versión actual: **v01.07**)
+**Script:** `massive_capture.py` (versión actual: **v01.08**)
 **Carpeta:** `~/Desktop/scripts/polygon`
 
 Descarga barras de precios (OHLCV) desde **Polygon.io** (ahora llamado **Massive.com**) para muchos tickers en una sola corrida, y genera automáticamente los archivos filtrados y agregados.
@@ -139,7 +139,7 @@ Para ver la ayuda completa o la versión instalada:
 
 ```bash
 python3 massive_capture.py --help
-python3 massive_capture.py --version      # → massive_capture.py v01.07
+python3 massive_capture.py --version      # → massive_capture.py v01.08
 ```
 
 ---
@@ -285,6 +285,7 @@ El nombre del archivo es siempre `massive_capture.py`. La versión está dentro 
 | v01.05 | `--tickers-file` acepta listas exportadas de TradingView (quita prefijos de bolsa, convierte FX, cripto e índices, ignora secciones y omite futuros). `--merge-only` ya no muestra fechas de descarga. |
 | v01.06 | Los símbolos `TVC:` que solo existen en TradingView (bonos, petróleo, DXY) se omiten con aviso; `TVC:VIX` sigue convirtiéndose a `I:VIX`. |
 | v01.07 | RSI y MACD se agregan automáticamente después de cada captura o `--merge` (usa `add_indicators.py`, que debe estar en la misma carpeta). Antes, un `--merge` dejaba las barras nuevas sin indicadores y reconstruía 30min/1day sin ellos. `--no-indicators` desactiva este paso. |
+| v01.08 | `--from auto`: cada ticker empieza desde el día de su última barra en `--out` (activa `--merge`). Tickers sin archivos empiezan 730 días atrás. Actualizar todo: `python3 massive_capture.py --tickers-file macro56.txt --from auto --out Used/2026_macro` |
 
 ---
 
